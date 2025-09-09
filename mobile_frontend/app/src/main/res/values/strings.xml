@@ -46,4 +46,27 @@
     <string name="no_suggestions">No suggestions yet</string>
 
     <string name="share_with">Share with…</string>
+
+    <!-- AI-centric additions -->
+    <string name="ai_assistant">AI Assistant</string>
+    <string name="ai_is_thinking">AI is thinking…</string>
+    <string name="ai_suggestions_title">Personalized suggestions</string>
+    <string name="ai_share_predictions_title">Smart share predictions</string>
+    <string name="ai_quick_actions">Quick actions</string>
+    <string name="ask_ai_hint">Ask the assistant about sharing…</string>
+    <string name="ask">Ask</string>
+    <string name="smart_group_saved_device">Saved device</string>
+    <string name="smart_group_nearby">Nearby</string>
+    <string name="smart_group_recent">Recent</string>
+    <string name="smart_group_apps">Apps</string>
+    <string name="category_photos">Photos</string>
+    <string name="category_videos">Videos</string>
+    <string name="category_audio">Audio</string>
+    <string name="category_documents">Documents</string>
+    <string name="ai_suggested">AI Suggested</string>
+    <string name="prompt_fastest_share">What’s the fastest way to share my files?</string>
+    <string name="prompt_recommend_targets">Recommend share targets</string>
+    <string name="prompt_explain_wifi_bt">Explain Wi‑Fi vs Bluetooth</string>
+    <string name="assistant_reply_prefix">Assistant:</string>
+    <string name="no_ai_suggestions">No AI suggestions yet</string>
 </resources>

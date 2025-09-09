@@ -5,8 +5,8 @@ import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.LayoutInflater
@@ -14,19 +14,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import org.example.app.R
 import org.example.app.data.HistoryRepository
-import java.text.DateFormat
 import java.util.Date
 
 /**
  * ShareFragment allows users to pick files and share them via Bluetooth or Wi‑Fi.
- * Actual transport is delegated to Android's share intents as a secure baseline.
+ * Now enhanced with AI predictions: quick category pickers and smart target chips, plus an inline assistant query field.
  */
 class ShareFragment : Fragment() {
 
@@ -50,7 +54,7 @@ class ShareFragment : Fragment() {
     // PUBLIC_INTERFACE
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         /**
-         * Wire up buttons and list.
+         * Wire up buttons and list. Populate AI predictive chips and inline assistant.
          */
         super.onViewCreated(view, savedInstanceState)
         val pick: Button = view.findViewById(R.id.btn_pick)
@@ -66,18 +70,129 @@ class ShareFragment : Fragment() {
         filesList.layoutManager = LinearLayoutManager(requireContext())
         filesList.adapter = adapter
 
-        pick.setOnClickListener { openFilePicker() }
+        pick.setOnClickListener { openFilePickerWithType("*/*") }
         sendBt.setOnClickListener { confirmAndShare("Bluetooth") { shareViaBluetooth() } }
         sendWifi.setOnClickListener { confirmAndShare("Wi‑Fi") { shareViaWifi() } }
+
+        // AI UI: categories and predicted targets
+        setupAiUi(view)
 
         updateListState()
     }
 
-    private fun openFilePicker() {
+    private fun setupAiUi(view: View) {
+        val aiProgress: View = view.findViewById(R.id.ai_progress_share)
+        val aiStatus: TextView = view.findViewById(R.id.ai_status_text_share)
+        val chipCategories: ChipGroup = view.findViewById(R.id.chip_file_categories)
+        val chipTargets: ChipGroup = view.findViewById(R.id.chip_share_targets)
+        val inputAi: EditText = view.findViewById(R.id.input_ai_query)
+        val btnAsk: Button = view.findViewById(R.id.btn_ai_ask)
+
+        // Category chips
+        fun addCatChip(text: String, mime: String) {
+            val chip = Chip(requireContext()).apply {
+                this.text = text
+                isClickable = true
+                isCheckable = false
+                setOnClickListener { openFilePickerWithType(mime) }
+            }
+            chipCategories.addView(chip)
+        }
+        addCatChip(getString(R.string.category_photos), "image/*")
+        addCatChip(getString(R.string.category_videos), "video/*")
+        addCatChip(getString(R.string.category_audio), "audio/*")
+        addCatChip(getString(R.string.category_documents), "*/*")
+
+        // Predicted target chips with AI status simulation
+        aiProgress.visibility = View.VISIBLE
+        aiStatus.visibility = View.VISIBLE
+        chipTargets.removeAllViews()
+
+        view.postDelayed({
+            aiProgress.visibility = View.GONE
+            aiStatus.visibility = View.GONE
+
+            // Smart grouping: Saved device, Nearby, Apps
+            val savedName = getSavedDeviceName()
+            if (savedName != null) {
+                addTargetChip(chipTargets, getString(R.string.smart_group_saved_device) + ": $savedName") {
+                    confirmAndShare("Bluetooth") { shareViaBluetooth() }
+                }
+            }
+
+            addTargetChip(chipTargets, getString(R.string.smart_group_nearby)) {
+                openScan()
+            }
+
+            // Add top share apps
+            getTopShareApps(requireContext(), limit = 3).forEach { (label, pkg) ->
+                addTargetChip(chipTargets, label) {
+                    // Attempt to share via specific app
+                    shareSelectedFiles(pkg)
+                }
+            }
+        }, 700)
+
+        // Ask AI -> navigate to Chat with prefill
+        btnAsk.setOnClickListener {
+            val q = inputAi.text?.toString()?.trim().orEmpty()
+            Toast.makeText(requireContext(), getString(R.string.ai_assistant), Toast.LENGTH_SHORT).show()
+            val frag = ChatFragment()
+            if (q.isNotEmpty()) {
+                frag.arguments = bundleOf("prefill" to q)
+            }
+            (requireActivity() as AppCompatActivity).supportFragmentManager
+                .beginTransaction()
+                .replace(R.id.fragment_container, frag, "ChatFragment")
+                .commitAllowingStateLoss()
+        }
+    }
+
+    private fun addTargetChip(group: ChipGroup, text: String, onClick: () -> Unit) {
+        val chip = Chip(requireContext()).apply {
+            this.text = text
+            isClickable = true
+            isCheckable = false
+            setOnClickListener { onClick.invoke() }
+        }
+        group.addView(chip)
+    }
+
+    private fun openScan() {
+        (requireActivity() as AppCompatActivity).supportFragmentManager
+            .beginTransaction()
+            .replace(R.id.fragment_container, ScanFragment(), "ScanFragment")
+            .commitAllowingStateLoss()
+    }
+
+    private fun getSavedDeviceName(): String? {
+        val prefs = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DEVICE_NAME, null)
+    }
+
+    private fun getTopShareApps(context: Context, limit: Int): List<Pair<String, String>> {
+        val pm = context.packageManager
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "*/*"
+        }
+        val res = pm.queryIntentActivities(sendIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        val unique = LinkedHashMap<String, String>()
+        for (ri in res) {
+            val pkg = ri.activityInfo.packageName ?: continue
+            if (!unique.containsKey(pkg)) {
+                val label = ri.loadLabel(pm)?.toString() ?: pkg
+                unique[pkg] = label
+            }
+            if (unique.size >= limit) break
+        }
+        return unique.entries.map { it.value to it.key }
+    }
+
+    private fun openFilePickerWithType(mimeType: String) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            type = "*/*"
+            type = mimeType
         }
         startActivityForResult(intent, REQ_PICK_FILES)
     }
@@ -218,5 +333,7 @@ class ShareFragment : Fragment() {
 
     companion object {
         private const val REQ_PICK_FILES = 5001
+        private const val PREFS = "connectshare_prefs"
+        private const val KEY_DEVICE_NAME = "selected_device_name"
     }
 }
